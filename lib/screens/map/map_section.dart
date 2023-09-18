@@ -1,24 +1,15 @@
 import 'dart:async';
-import 'dart:ffi';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:ui';
 
 import 'package:antap/models/restaurant.dart';
-import 'package:antap/screens/map/custom_marker_widget.dart';
-import 'package:antap/screens/map/pop_up/widgets/appbar.dart';
-import 'package:antap/screens/map/pop_up/widgets/body.dart';
-import 'package:antap/screens/map/pop_up/widgets/gutter.dart';
 import 'package:antap/screens/map/restaurant_detail/restaurant_detail_screen.dart';
-import 'package:antap/src/appbar.dart';
-import 'package:antap/src/card.dart';
-import 'package:antap/src/gutter.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:antap/screens/map/pop_up/popup_screen.dart';
 
 class MapSection extends StatefulWidget {
   const MapSection({super.key});
@@ -33,85 +24,75 @@ class _MapSectionState extends State<MapSection> {
   final Completer<GoogleMapController> _controller =
       Completer<GoogleMapController>();
 
-  static const CameraPosition _hcmusPos = CameraPosition(
-    target: LatLng(10.7605, 106.6818),
-    zoom: 17,
-  );
-
   // HCMUS
-  LatLng _initialPosition = LatLng(10.7628, 106.6825);
+  final LatLng _initialPosition = const LatLng(10.7628, 106.6825);
   Set<Marker> markers = {};
 
   @override
   void initState() {
-    // TODO: implement initState
-    _setRestaurantMarker();
-    setCurrentLocation();
-    _getUserLocation();
-
     super.initState();
+    _setRestaurantMarker();
+    _setCurrentLocation();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Image img = Image.network('https://googleflutter.com/sample_image.jpg');
-    // return CustomMarkerWidget(img: img);
-    return Stack(children: [
-      Scaffold(
-        body: GoogleMap(
-          mapType: MapType.normal,
-          markers: markers,
-          zoomControlsEnabled: false,
-          initialCameraPosition: CameraPosition(
-            target: _initialPosition,
-            zoom: 17,
-          ),
-          onMapCreated: (GoogleMapController controller) {
-            _controller.complete(controller);
-          },
+    return Scaffold(
+      body: GoogleMap(
+        mapType: MapType.normal,
+        markers: markers,
+        zoomControlsEnabled: false,
+        initialCameraPosition: CameraPosition(
+          target: _initialPosition,
+          zoom: 17,
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: setCurrentLocation,
-          label: const Text("Now"),
-          icon: const Icon(Icons.location_history),
-        ),
+        onMapCreated: (GoogleMapController controller) {
+          _controller.complete(controller);
+        },
       ),
-    ]);
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _setCurrentLocation,
+        label: const Text("Now"),
+        icon: const Icon(Icons.location_history),
+      ),
+    );
   }
 
-  void _getUserLocation() async {
-    Position position = await _determinePosition();
-    setState(() {
-      _initialPosition = LatLng(position.latitude, position.longitude);
-    });
-  }
-
-  Future<void> setCurrentLocation() async {
+  Future<void> _setCurrentLocation() async {
     Position position = await _determinePosition();
     final c = await _controller.future;
-    c.animateCamera(CameraUpdate.newCameraPosition(CameraPosition(
-        target: LatLng(position.latitude, position.longitude), zoom: 17)));
-
-    if (markers.isNotEmpty &&
-        markers.last.markerId == const MarkerId('currentLocation')) {
-      markers.remove(markers.last);
-    }
 
     BitmapDescriptor markerIcon = await BitmapDescriptor.fromAssetImage(
         const ImageConfiguration(), 'assets/images/icons/current_location.png');
+    if (mounted) {
+      setState(() {
+        c.animateCamera(CameraUpdate.newCameraPosition(CameraPosition(
+            target: LatLng(position.latitude, position.longitude), zoom: 17)));
 
-    markers.add(Marker(
-      markerId: const MarkerId('currentLocation'),
-      infoWindow: const InfoWindow(title: 'You'),
-      position: LatLng(position.latitude, position.longitude),
-      icon: markerIcon,
-    ));
+        if (markers.isNotEmpty &&
+            markers.last.markerId == const MarkerId('currentLocation')) {
+          markers.remove(markers.last);
+        }
 
-    setState(() {});
+        markers.add(Marker(
+          markerId: const MarkerId('currentLocation'),
+          infoWindow: const InfoWindow(title: 'You'),
+          position: LatLng(position.latitude, position.longitude),
+          icon: markerIcon,
+        ));
+      });
+    }
   }
 
   void showWidget(Restaurant restaurant) {
-    Navigator.pushNamed(context, RestaurantDetailsScreen.id,arguments: ScreenArguments(imagePath: restaurant.imageUrl, restaurantName: restaurant.name, restaurantAddress: "HCMUS", category: 'Dining', distance: "5km", rating: "4"));
+    Navigator.pushNamed(context, RestaurantDetailsScreen.id,
+        arguments: ScreenArguments(
+            imagePath: restaurant.imageUrl,
+            restaurantName: restaurant.name,
+            restaurantAddress: "HCMUS",
+            category: 'Dining',
+            distance: "5km",
+            rating: "4"));
     // setState(() {
     //   showDialog(
     //     context: context,
@@ -124,7 +105,7 @@ class _MapSectionState extends State<MapSection> {
     // });
   }
 
-  _setRestaurantMarker() async {
+  Future<void> _setRestaurantMarker() async {
     List<Restaurant> restaurants = await getRestaurantList();
 
     for (int i = 0; i < restaurants.length; i++) {
@@ -249,7 +230,7 @@ class _MapSectionState extends State<MapSection> {
   Future<Uint8List?> loadNetworkImage(String path) async {
     final completer = Completer<ImageInfo>();
     NetworkImage image = NetworkImage(path);
-    image.resolve(ImageConfiguration()).addListener(
+    image.resolve(const ImageConfiguration()).addListener(
         ImageStreamListener((info, _) => completer.complete(info)));
 
     final imageInfo = await completer.future;
@@ -263,28 +244,11 @@ class _MapSectionState extends State<MapSection> {
   Future<List<Restaurant>> getRestaurantList() async {
     List<Restaurant> restaurants = [];
     QuerySnapshot<Map<String, dynamic>> querySnapshot =
-      await FirebaseFirestore.instance.collection('restaurants').get();
-      querySnapshot.docs.forEach((doc) {
-    Restaurant restaurant = Restaurant.fromFirestore(doc, null);
-    restaurants.add(restaurant);
-  });
-    //
-    // /// Firestance
-    // restaurants.add(Restaurant(
-    //     'restaurant1',
-    //     'Name 1',
-    //     'https://googleflutter.com/sample_image.jpg',
-    //     const LatLng(10.764354, 106.682098)));
-    // restaurants.add(Restaurant(
-    //     'restaurant2',
-    //     'Name 2',
-    //     'https://googleflutter.com/sample_image.jpg',
-    //     const LatLng(10.761160, 106.683385)));
-    // restaurants.add(Restaurant(
-    //     'restaurant3',
-    //     'Name 3',
-    //     'https://googleflutter.com/sample_image.jpg',
-    //     const LatLng(10.761814, 106.681829)));
+        await FirebaseFirestore.instance.collection('restaurants').get();
+    querySnapshot.docs.forEach((doc) {
+      Restaurant restaurant = Restaurant.fromFirestore(doc, null);
+      restaurants.add(restaurant);
+    });
     return restaurants;
   }
 
